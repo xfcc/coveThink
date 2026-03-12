@@ -18,5 +18,5 @@ miniprogram_npm/
 *.log
 npm-debug.log*
 
-# Optional: uncomment if you want to keep project.private.config.json local only
-# project.private.config.json
+# 本地/私有配置（含 App ID），不提交
+project.private.config.json
