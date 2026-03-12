@@ -1,0 +1,4 @@
+<view class="page">
+  <text class="placeholder">播放页（后续实现）</text>
+  <navigator url="/pages/index/index" class="link">返回大厅</navigator>
+</view>

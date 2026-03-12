@@ -1,0 +1,9 @@
+/* 全局基础 reset */
+page {
+  box-sizing: border-box;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+}
+
+view, text, image {
+  box-sizing: border-box;
+}

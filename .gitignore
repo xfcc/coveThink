@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# WeChat DevTools
+miniprogram_npm/
+.DS_Store
+
+# IDE / Editor
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+*.log
+npm-debug.log*
+
+# Optional: uncomment if you want to keep project.private.config.json local only
+# project.private.config.json

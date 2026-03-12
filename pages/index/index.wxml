@@ -1,0 +1,21 @@
+<view class="page">
+  <view class="header">
+    <text class="title">澄思</text>
+    <text class="subtitle">澄澈思绪，让认知有序、让思考顺滑</text>
+  </view>
+  <view class="tool-list">
+    <view
+      class="card"
+      wx:for="{{tools}}"
+      wx:key="id"
+      data-id="{{item.id}}"
+      bindtap="onToolTap"
+    >
+      <view class="card-icon">{{item.icon}}</view>
+      <view class="card-body">
+        <text class="card-title">{{item.title}}</text>
+        <text class="card-desc">{{item.desc}}</text>
+      </view>
+    </view>
+  </view>
+</view>

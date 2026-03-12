@@ -1,0 +1,12 @@
+<view class="page">
+  <view class="content">
+    <view class="icon-wrap">{{roundtable.icon}}</view>
+    <text class="title">{{roundtable.title}}</text>
+    <text class="desc">{{roundtable.desc}}</text>
+    <view class="topic-box">
+      <text class="topic-label">你想探讨的话题</text>
+      <view class="topic-value">{{topic}}</view>
+    </view>
+    <button class="btn" bindtap="onDiscussTap">深入探讨</button>
+  </view>
+</view>

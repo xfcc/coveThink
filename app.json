@@ -1,0 +1,12 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/input/input",
+    "pages/chat/chat"
+  ],
+  "window": {
+    "navigationBarTitleText": "澄思",
+    "navigationBarBackgroundColor": "#f5f5f5"
+  },
+  "sitemapLocation": "sitemap.json"
+}
