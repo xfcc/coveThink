@@ -71,18 +71,31 @@ function parseChat(raw) {
   const speechSection = text.match(/###\s*\[SPEECH\]([\s\S]*?)(?=\n###\s*\[SYNTHESIS\]|$)/)
   const speechText = (speechSection && speechSection[1]) || ''
   const speeches = []
-  const speechBlocks = speechText.split(/(?=###\s*\[SPEECH\])/).filter(b => /speaker:/.test(b))
+  const speechBlocks = speechText.split(/(?=###\s*\[SPEECH\])/).filter(b => /speaker\s*[:：]/.test(b))
   speechBlocks.forEach((block, i) => {
-    const speakerMatch = block.match(/-?\s*speaker:\s*(.+?)(?=\n|$)/m)
-    const actionMatch = block.match(/-?\s*action:\s*(.+?)(?=\n|$)/m)
-    const contentMatch = block.match(/-?\s*content:\s*([\s\S]+?)(?=\n-\s*tldr:|\n###|$)/m)
-    const tldrMatch = block.match(/-?\s*tldr:\s*([\s\S]+?)(?=\n###|\n$|$)/m)
+    // 兼容 "- key: value" 与 "key: value"，以及中英文冒号
+    const speakerMatch = block.match(/speaker\s*[:：]\s*([^\n]+?)(?=\n|$)/m)
+    const actionMatch = block.match(/action\s*[:：]\s*([^\n]+?)(?=\n|$)/m)
+    // content 从 "content:" 后到 "tldr:" 前，允许多行；支持中英文冒号
+    let content = ''
+    const contentLabel = block.match(/content\s*[:：]\s*/i)
+    const tldrLabel = block.match(/tldr\s*[:：]\s*/i)
+    if (contentLabel) {
+      const from = contentLabel.index + contentLabel[0].length
+      const to = tldrLabel ? tldrLabel.index : block.length
+      content = block.slice(from, to).replace(/^\s*[-*]\s*/, '').trim()
+    }
+    let tldr = ''
+    if (tldrLabel) {
+      const from = tldrLabel.index + tldrLabel[0].length
+      tldr = block.slice(from).split(/\n###/)[0].replace(/^\s*[-*]\s*/, '').trim()
+    }
     if (speakerMatch) {
       speeches.push({
         speaker: (speakerMatch[1] || '').trim(),
         action: (actionMatch && actionMatch[1].trim()) || '',
-        content: (contentMatch && contentMatch[1].trim()) || '',
-        tldr: (tldrMatch && tldrMatch[1].trim()) || '',
+        content,
+        tldr,
         theme: THEMES[i % THEMES.length]
       })
     }
@@ -129,9 +142,10 @@ function parseSummary(raw) {
   for (const section of sections) {
     const listText = section.replace(/####\s+.+?\n?/, '')
     const items = []
-    const lines = listText.split(/\n/).filter(l => /^\s*-\s*\[.+\]/.test(l))
+    // 允许 "- [标签] 描述" 或 "* **[标签]** 描述" 这类写法
+    const lines = listText.split(/\n/).filter(l => /^\s*[-*]\s*(?:\*\*)?\[.+\]/.test(l))
     for (const line of lines) {
-      const m = line.match(/^\s*-\s*\[([^\]]+)\]\s*(.*)$/)
+      const m = line.match(/^\s*[-*]\s*(?:\*\*)?\[([^\]]+)\](?:\*\*)?\s*(.*)$/)
       if (m) items.push({ label: m[1].trim(), desc: (m[2] || '').trim() })
     }
     if (items.length === 0) continue

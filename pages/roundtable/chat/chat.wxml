@@ -25,7 +25,14 @@
   <scroll-view scroll-y class="main">
     <view class="loading-wrap" wx:if="{{loading}}">
       <view class="loading-spinner"></view>
-      <text class="loading-text">嘉宾正在讨论中…</text>
+      <text class="loading-text">{{loadingMessage}}</text>
+      <text class="loading-meta">已接收 {{streamedLength}} 字</text>
+      <view class="progress-wrap">
+        <view class="progress-track">
+          <view class="progress-fill" style="width: {{progressPercent}}%;"></view>
+        </view>
+        <text class="progress-label">{{progressPercent}}%</text>
+      </view>
     </view>
     <block wx:if="{{!loading}}">
       <block wx:for="{{rounds}}" wx:key="roundNum">
@@ -42,7 +49,7 @@
         </view>
 
         <view class="speeches">
-          <view class="speech-card speech-{{speech.theme}}" wx:for="{{item.speeches}}" wx:key="speaker">
+          <view class="speech-card speech-{{speech.theme}}" wx:for="{{item.speeches}}" wx:for-item="speech" wx:key="index">
             <view class="speech-accent"></view>
             <view class="speech-head">
               <text class="speech-speaker">{{speech.speaker}}</text>
@@ -101,7 +108,7 @@
     </view>
   </view>
 
-  <view class="footer">
+  <view class="footer" wx:if="{{!loading}}">
     <text class="footer-label">选择推演走向 / ACTION</text>
     <view class="actions">
       <view class="action-btn action-{{item.type}}" data-id="{{item.id}}" bindtap="onActionTap" wx:for="{{actions}}" wx:key="id">

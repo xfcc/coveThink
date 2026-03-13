@@ -1,15 +1,47 @@
 // 圆桌讨论 · 交锋页：主持引导 + 多角色发言 + 综述与框架（支持解析后的动态数据）
 const { parseChat } = require('../../../utils/parse-roundtable.js')
-const { callLLM } = require('../../../services/llm.js')
+const { callLLM, callDeepSeekStream } = require('../../../services/llm.js')
 
-/** 圆桌每一轮发送给 LLM 的 user 消息（command 为「可」或「深」） */
-function buildRoundPrompt(command, topic, roundIndex) {
+/**
+ * 圆桌每一轮发送给 LLM 的 user 消息（command 为「可」或「深」）
+ * @param {string} command - 可 / 深
+ * @param {string} topic - 议题
+ * @param {number} roundIndex - 当前轮次
+ * @param {{ guests: Array<{name,role,stance}>, moderatorParagraphs: string[], previousRounds: Array<{roundTitle,moderatorAsk,speeches,synthesis}> }} context - 邀请嘉宾与历史轮次，保证同一批人与脉络
+ */
+function buildRoundPrompt(command, topic, roundIndex, context = {}) {
   const roundLabel = roundIndex ? `第 ${roundIndex} 轮` : '首轮'
-  return `指令：${command}
+  const { guests = [], moderatorParagraphs = [], previousRounds = [] } = context
+
+  let prefix = ''
+  if (guests && guests.length) {
+    prefix += `【本场嘉宾名单（必须沿用，不得更换）】\n${guests.map(g => `- ${(g.name || '').trim()}（${(g.role || '').trim()}）：${(g.stance || '').trim()}`).join('\n')}\n\n`
+  }
+  if (moderatorParagraphs && moderatorParagraphs.length) {
+    prefix += `【主持人开场摘要】\n${moderatorParagraphs.join('\n\n')}\n\n`
+  }
+  if (previousRounds && previousRounds.length) {
+    prefix += `【此前讨论脉络】\n${previousRounds.map((r, i) => {
+      const n = i + 1
+      let block = `第${n}轮 ${r.roundTitle || ''}\n主持引导：${(r.moderatorAsk || '').trim()}\n`
+      if (r.speeches && r.speeches.length) {
+        block += r.speeches.map(s => `- ${(s.speaker || '').trim()}「${(s.action || '').trim()}」：${(s.content || '').trim().slice(0, 120)}${(s.content || '').length > 120 ? '…' : ''}`).join('\n') + '\n'
+      }
+      if (r.synthesis && (r.synthesis.coreConflict || r.synthesis.deepQuestion)) {
+        block += `综述：${(r.synthesis.coreConflict || '').trim().slice(0, 80)}${(r.synthesis.deepQuestion || '').trim().slice(0, 60)}\n`
+      }
+      return block
+    }).join('\n')}\n`
+  }
+
+  return `${prefix}指令：${command}
 轮次：${roundLabel}
 议题：${topic}
-请严格按照 [TYPE] 圆桌讨论 的 Markdown 结构，输出一轮完整的圆桌内容（包括 [ROUND_NUM]、[ROUND]、[MODERATOR_ASK]、若干 [SPEECH] 与 [SYNTHESIS]、[ACTIONS]），在内容上延续前文讨论的脉络。`
+请严格按照 [TYPE] 圆桌讨论 的 Markdown 结构，输出一轮完整的圆桌内容（包括 [ROUND_NUM]、[ROUND]、[MODERATOR_ASK]、若干 [SPEECH] 与 [SYNTHESIS]、[ACTIONS]）。本场发言嘉宾必须且仅限上述名单中的角色，在内容上延续此前讨论的脉络。`
 }
+
+/** 单轮圆桌讨论预估字数（用于进度条分母，完成前最多显示 99%） */
+const ESTIMATED_CHAT_ROUND_CHARS = 2200
 
 Page({
   data: {
@@ -26,7 +58,11 @@ Page({
     ],
     stepIndex: 2,
     showFrameworkFullscreen: false,
-    loading: false
+    loading: false,
+    loadingMessage: '嘉宾正在讨论中…',
+    streamedLength: 0,
+    progressPercent: 0,
+    estimatedTotal: ESTIMATED_CHAT_ROUND_CHARS
   },
 
   onLoad(options) {
@@ -54,13 +90,20 @@ Page({
       return
     }
     const safeTopic = topic || '请稍候…'
-    this.setData({ topic: safeTopic, loading: true })
+    this.setData({
+      topic: safeTopic,
+      loading: true,
+      loadingMessage: '嘉宾正在讨论中…',
+      streamedLength: 0,
+      progressPercent: 0,
+      estimatedTotal: ESTIMATED_CHAT_ROUND_CHARS
+    })
     this.fetchRound('可')
   },
 
   /** 请求一轮圆桌讨论（指令「可」或「深」），解析后渲染并追加为最新一轮 */
   fetchRound(command) {
-    if (this.data.loading) {
+    if (this.data.loading && (this.data.rounds && this.data.rounds.length)) {
       wx.showToast({ title: '当前轮讨论尚未完成', icon: 'none' })
       return
     }
@@ -72,10 +115,30 @@ Page({
       return
     }
     const nextIndex = (this.data.rounds && this.data.rounds.length ? this.data.rounds.length + 1 : 1)
-    const userMessage = buildRoundPrompt(command, t, nextIndex)
-    this.setData({ loading: true })
-    callLLM([{ role: 'user', content: userMessage }])
-      .then(({ text }) => {
+    const context = {
+      guests: app.globalData.roundtableGuests || [],
+      moderatorParagraphs: app.globalData.roundtableModeratorParagraphs || [],
+      previousRounds: this.data.rounds || []
+    }
+    const userMessage = buildRoundPrompt(command, t, nextIndex, context)
+    const estimatedTotal = ESTIMATED_CHAT_ROUND_CHARS
+
+    this.setData({
+      loading: true,
+      loadingMessage: '嘉宾正在讨论中…',
+      streamedLength: 0,
+      progressPercent: 0,
+      estimatedTotal
+    })
+
+    const onChunk = (fullText, receivedLength) => {
+      const percent = Math.min(99, Math.floor((receivedLength / estimatedTotal) * 100))
+      this.setData({ streamedLength: receivedLength, progressPercent: percent })
+    }
+
+    callDeepSeekStream([{ role: 'user', content: userMessage }], onChunk)
+      .then((text) => {
+        this.setData({ progressPercent: 100 })
         const parsed = parseChat(text)
         const round = {
           roundNum: parsed.roundNum || nextIndex,
@@ -96,12 +159,44 @@ Page({
           moderatorAsk: round.moderatorAsk,
           speeches: round.speeches,
           synthesis: round.synthesis,
-          loading: false
+          loading: false,
+          streamedLength: 0,
+          progressPercent: 0
         })
       })
       .catch((err) => {
-        this.setData({ loading: false })
-        wx.showToast({ title: err.message || '讨论请求失败，请重试', icon: 'none' })
+        // 流式失败时回退到统一的 callLLM（仍优先 DeepSeek）
+        callLLM([{ role: 'user', content: userMessage }])
+          .then(({ text }) => {
+            const parsed = parseChat(text)
+            const round = {
+              roundNum: parsed.roundNum || nextIndex,
+              roundTitle: parsed.roundTitle || '',
+              moderatorAsk: parsed.moderatorAsk || '',
+              speeches: parsed.speeches || [],
+              synthesis: {
+                coreConflict: parsed.synthesis.coreConflict || '',
+                framework: parsed.synthesis.framework || '',
+                deepQuestion: parsed.synthesis.deepQuestion || ''
+              }
+            }
+            const rounds = (this.data.rounds || []).concat(round)
+            this.setData({
+              topic: t,
+              rounds,
+              roundTitle: round.roundTitle,
+              moderatorAsk: round.moderatorAsk,
+              speeches: round.speeches,
+              synthesis: round.synthesis,
+              loading: false,
+              streamedLength: 0,
+              progressPercent: 0
+            })
+          })
+          .catch((e) => {
+            this.setData({ loading: false, streamedLength: 0, progressPercent: 0 })
+            wx.showToast({ title: (e && e.message) || '讨论请求失败，请重试', icon: 'none' })
+          })
       })
   },
 
@@ -142,6 +237,8 @@ Page({
       return
     }
     if (id === 'stop') {
+      const app = getApp()
+      app.globalData.roundtableRounds = this.data.rounds || []
       wx.navigateTo({
         url: '/pages/roundtable/summary/summary?topic=' + encodeURIComponent(this.data.topic)
       })
