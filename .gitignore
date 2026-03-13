@@ -21,7 +21,8 @@ npm-debug.log*
 # 本地/私有配置（含 App ID），不提交
 project.private.config.json
 
-# 示例文档
+# 示例文档与本地示例资源（截图已移至 docs/screenshots/）
+examples/
 .example/
 
 # Cursor 本地规则（不推送 GitHub）
