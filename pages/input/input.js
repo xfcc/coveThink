@@ -1,12 +1,11 @@
-// 输入页 - 按工具展示不同入口（圆桌会议等）
+// 输入页 - 按工具展示不同入口（圆桌讨论 / 商业结构 / 单词解剖）
 Page({
   data: {
     toolId: '',
-    topic: 'AI 教育：从千人千面到一人一面',
-    // 圆桌会议配置
+    topic: '',
     roundtable: {
       icon: '👥',
-      title: '圆桌会议',
+      title: '圆桌讨论',
       desc: '一个以"求真"为目标的对话。对话由一位极具洞察力的主持人进行引导，邀请代表不同思想的"典型代表人物"进行一场高强度的、即时响应式的深度对话。'
     }
   },
@@ -16,8 +15,25 @@ Page({
     this.setData({ toolId })
   },
 
+  onTopicInput(e) {
+    this.setData({ topic: (e.detail && e.detail.value) || '' })
+  },
+
   onDiscussTap() {
-    // 后续：触发加载过渡并跳转 chat
+    const toolId = this.data.toolId
+    const topic = (this.data.topic || '').trim()
+    if (!topic) {
+      wx.showToast({ title: '请先输入要探讨的话题', icon: 'none' })
+      return
+    }
+    if (toolId === 'roundtable') {
+      const app = getApp()
+      app.globalData.roundtableTopic = topic
+      wx.navigateTo({
+        url: '/pages/roundtable/introduction/introduction?topic=' + encodeURIComponent(topic)
+      })
+      return
+    }
     wx.showToast({ title: '敬请期待', icon: 'none' })
   }
 })

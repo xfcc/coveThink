@@ -5,7 +5,7 @@
     <text class="desc">{{roundtable.desc}}</text>
     <view class="topic-box">
       <text class="topic-label">你想探讨的话题</text>
-      <view class="topic-value">{{topic}}</view>
+      <textarea class="topic-input" placeholder="输入一个你想深度探讨的议题…" value="{{topic}}" bindinput="onTopicInput" maxlength="200" show-confirm-bar="{{false}}" auto-height />
     </view>
     <button class="btn" bindtap="onDiscussTap">深入探讨</button>
   </view>

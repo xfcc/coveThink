@@ -60,9 +60,9 @@
   margin-bottom: 16rpx;
 }
 
-.topic-value {
+.topic-input {
   width: 100%;
-  min-height: 88rpx;
+  min-height: 120rpx;
   padding: 24rpx 28rpx;
   background: #fff;
   border: 1rpx solid #e5e5e5;

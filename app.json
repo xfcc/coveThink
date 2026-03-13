@@ -2,7 +2,9 @@
   "pages": [
     "pages/index/index",
     "pages/input/input",
-    "pages/chat/chat"
+    "pages/roundtable/introduction/introduction",
+    "pages/roundtable/chat/chat",
+    "pages/roundtable/summary/summary"
   ],
   "window": {
     "navigationBarTitleText": "澄思",

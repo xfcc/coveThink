@@ -1,0 +1,71 @@
+<view class="page">
+  <view class="header">
+    <view class="topic-block">
+      <text class="topic-label">当前议题 / TOPIC</text>
+      <text class="topic-title">{{topic}}</text>
+    </view>
+    <view class="steps">
+      <view class="step step-active">
+        <view class="step-dot"><text>1</text><view class="step-badge"></view></view>
+        <text class="step-text">邀请嘉宾</text>
+      </view>
+      <view class="step-line"></view>
+      <view class="step">
+        <view class="step-dot step-dot-inactive"><text>2</text></view>
+        <text class="step-text step-text-inactive">圆桌讨论</text>
+      </view>
+      <view class="step-line"></view>
+      <view class="step">
+        <view class="step-dot step-dot-inactive"><text>3</text></view>
+        <text class="step-text step-text-inactive">话题总结</text>
+      </view>
+    </view>
+  </view>
+
+  <scroll-view scroll-y class="main">
+    <view class="loading-wrap" wx:if="{{loading}}">
+      <view class="loading-spinner"></view>
+      <text class="loading-text">正在邀请嘉宾中…</text>
+    </view>
+    <block wx:if="{{!loading}}">
+    <view class="section section-moderator">
+      <view class="section-head">
+        <view class="avatar avatar-m">M</view>
+        <text class="section-title">系统主持 / Moderator</text>
+      </view>
+      <view class="moderator-card">
+        <view class="moderator-bar"></view>
+        <view class="moderator-body">
+          <text class="moderator-p" wx:for="{{moderatorParagraphs}}" wx:key="*this">{{item}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="section">
+      <view class="roster-head">
+        <text class="roster-title">入场嘉宾</text>
+        <text class="roster-tag">Roster</text>
+      </view>
+      <view class="guests">
+        <view class="guest-card" wx:for="{{guests}}" wx:key="name">
+          <view class="guest-head">
+            <view>
+              <text class="guest-name">{{item.name}}</text>
+              <text class="guest-role">{{item.role}}</text>
+            </view>
+            <view class="mbti mbti-{{item.mbtiClass}}">{{item.mbti}}</view>
+          </view>
+          <view class="guest-stance">
+            <text class="stance-label">核心立场 / Stance</text>
+            <text class="stance-text">{{item.stance}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    </block>
+  </scroll-view>
+
+  <view class="footer" wx:if="{{!loading}}">
+    <button class="btn-primary" bindtap="onEnterRoundTap">{{actionLabel}}</button>
+  </view>
+</view>
