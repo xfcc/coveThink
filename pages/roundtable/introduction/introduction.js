@@ -4,7 +4,7 @@ const { callLLM, callDeepSeekStream } = require('../../../services/llm.js')
 
 /** 邀请嘉宾环节发给 LLM 的 user 消息（system 已在 llm 层注入） */
 function buildInvitationPrompt(topic) {
-  return `议题：${topic}\n请严格按照 [TYPE] 邀请嘉宾 的 Markdown 结构，输出完整内容（包含 [TOPIC]、[MODERATOR]、[GUEST_ROSTER] 与每位 [GUEST] 的 name/role/mbti/stance、[ACTION]）。`
+  return `你将收到一个议题，请为“圆桌讨论”的第一阶段生成邀请嘉宾信息。\n\n要求：只输出一个 JSON 对象（严格 JSON），不允许任何前后缀文本、解释、Markdown、代码块围栏（\`\`\`）。\n\n输入：\n- topic: ${topic}\n\n输出 JSON schema（字段必须齐全、类型正确，不得为 null）：\n{\n  \"type\": \"invitation\",\n  \"version\": 1,\n  \"topic\": string,\n  \"moderatorParagraphs\": string[],\n  \"guests\": Array<{ \"name\": string, \"role\": string, \"mbti\": string, \"stance\": string }>,\n  \"actionLabel\": string\n}\n\n约束：\n- guests 必须恰好 3 位。\n- moderatorParagraphs 至少 2 段。\n- actionLabel 固定为“进入第一轮圆桌讨论”。`
 }
 
 /** 邀请嘉宾回复的大致字数（用于进度条分母，完成前最多显示 99%） */
@@ -112,9 +112,9 @@ Page({
       })
   },
 
-  /** 供外部注入解析结果：传入 LLM 返回的 markdown 文本 */
-  applyMarkdown(markdownText) {
-    const parsed = parseIntroduction(markdownText)
+  /** 供外部注入解析结果：传入 LLM 返回的 JSON 文本 */
+  applyJson(jsonText) {
+    const parsed = parseIntroduction(jsonText)
     const app = getApp()
     this.setData({
       topic: parsed.topic || this.data.topic,

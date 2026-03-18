@@ -34,10 +34,7 @@ function buildRoundPrompt(command, topic, roundIndex, context = {}) {
     }).join('\n')}\n`
   }
 
-  return `${prefix}指令：${command}
-轮次：${roundLabel}
-议题：${topic}
-请严格按照 [TYPE] 圆桌讨论 的 Markdown 结构，输出一轮完整的圆桌内容（包括 [ROUND_NUM]、[ROUND]、[MODERATOR_ASK]、若干 [SPEECH] 与 [SYNTHESIS]、[ACTIONS]）。本场发言嘉宾必须且仅限上述名单中的角色，在内容上延续此前讨论的脉络。`
+  return `${prefix}你将收到一条指令与上下文，请为“圆桌讨论”的单轮输出结构化结果。\n\n要求：只输出一个 JSON 对象（严格 JSON），不允许任何前后缀文本、解释、Markdown、代码块围栏（\`\`\`）。\n\n输入：\n- command: ${command}\n- roundLabel: ${roundLabel}\n- topic: ${topic}\n\n输出 JSON schema（字段必须齐全、类型正确，不得为 null）：\n{\n  \"type\": \"chat\",\n  \"version\": 1,\n  \"roundNum\": number,\n  \"roundTitle\": string,\n  \"moderatorAsk\": string,\n  \"speeches\": Array<{ \"speaker\": string, \"action\": string, \"content\": string, \"tldr\": string }>,\n  \"synthesis\": { \"coreConflict\": string, \"framework\": string, \"deepQuestion\": string },\n  \"actions\": Array<{ \"id\": \"continue\"|\"deep_dive\"|\"stop\", \"label\": \"可\"|\"深\"|\"止\" }>\n}\n\n约束：\n- speeches 必须来自“本场嘉宾名单”中的人名，且至少 3 条发言。\n- framework 必须是 ASCII 图，用 \\n 表示换行。\n- actions 固定为 continue/deep_dive/stop 三个选项。\n- 在内容上延续此前讨论脉络，不得更换嘉宾。`
 }
 
 /** 单轮圆桌讨论预估字数（用于进度条分母，完成前最多显示 99%） */
@@ -200,9 +197,9 @@ Page({
       })
   },
 
-  /** 供外部注入解析结果：传入 LLM 返回的 markdown 文本 */
-  applyMarkdown(markdownText) {
-    const parsed = parseChat(markdownText)
+  /** 供外部注入解析结果：传入 LLM 返回的 JSON 文本 */
+  applyJson(jsonText) {
+    const parsed = parseChat(jsonText)
     const app = getApp()
     const topic = app.globalData.roundtableTopic || this.data.topic
     const round = {

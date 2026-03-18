@@ -68,16 +68,16 @@ function callDeepSeek(messages) {
 const TOPIC = 'AI 时代学习理论的首选：建构主义是否当之无愧'
 
 function buildInvitationPrompt(topic) {
-  return `议题：${topic}\n请严格按照 [TYPE] 邀请嘉宾 的 Markdown 结构，输出完整内容（包含 [TOPIC]、[MODERATOR]、[GUEST_ROSTER] 与每位 [GUEST] 的 name/role/mbti/stance、[ACTION]）。`
+  return `你将收到一个议题，请为“圆桌讨论”的第一阶段生成邀请嘉宾信息。\n\n要求：只输出一个 JSON 对象（严格 JSON），不允许任何前后缀文本、解释、Markdown、代码块围栏（\`\`\`）。\n\n输入：\n- topic: ${topic}\n\n输出 JSON schema（字段必须齐全、类型正确，不得为 null）：\n{\n  \"type\": \"invitation\",\n  \"version\": 1,\n  \"topic\": string,\n  \"moderatorParagraphs\": string[],\n  \"guests\": Array<{ \"name\": string, \"role\": string, \"mbti\": string, \"stance\": string }>,\n  \"actionLabel\": string\n}\n\n约束：\n- guests 必须恰好 3 位。\n- moderatorParagraphs 至少 2 段。\n- actionLabel 固定为“进入第一轮圆桌讨论”。`
 }
 
 function buildRoundPrompt(command, topic, roundIndex) {
   const roundLabel = roundIndex ? `第 ${roundIndex} 轮` : '首轮'
-  return `指令：${command}\n轮次：${roundLabel}\n议题：${topic}\n请严格按照 [TYPE] 圆桌讨论 的 Markdown 结构，输出一轮完整的圆桌内容（包括 [ROUND_NUM]、[ROUND]、[MODERATOR_ASK]、若干 [SPEECH] 与 [SYNTHESIS]、[ACTIONS]），在内容上延续前文讨论的脉络。`
+  return `你将收到一条指令与上下文，请为“圆桌讨论”的单轮输出结构化结果。\n\n要求：只输出一个 JSON 对象（严格 JSON），不允许任何前后缀文本、解释、Markdown、代码块围栏（\`\`\`）。\n\n输入：\n- command: ${command}\n- roundLabel: ${roundLabel}\n- topic: ${topic}\n\n输出 JSON schema（字段必须齐全、类型正确，不得为 null）：\n{\n  \"type\": \"chat\",\n  \"version\": 1,\n  \"roundNum\": number,\n  \"roundTitle\": string,\n  \"moderatorAsk\": string,\n  \"speeches\": Array<{ \"speaker\": string, \"action\": string, \"content\": string, \"tldr\": string }>,\n  \"synthesis\": { \"coreConflict\": string, \"framework\": string, \"deepQuestion\": string },\n  \"actions\": Array<{ \"id\": \"continue\"|\"deep_dive\"|\"stop\", \"label\": \"可\"|\"深\"|\"止\" }>\n}\n\n约束：\n- speeches 至少 3 条发言。\n- framework 必须是 ASCII 图，用 \\n 表示换行。\n- actions 固定为 continue/deep_dive/stop 三个选项。`
 }
 
 function buildSummaryPrompt(command, topic) {
-  return `指令：${command}\n议题：${topic}\n请严格按照 [TYPE] 话题总结 的 Markdown 结构输出总结内容（包含 [CONCLUSION]、[MODERATOR_CLOSING]、[KNOWLEDGE_NETWORK]、[ULTIMATE_CONCLUSION] 与 [ACTIONS]），对此前圆桌讨论进行结构化收束。`
+  return `你将收到“止”指令与上下文，请输出圆桌讨论的结构化收束总结。\n\n要求：只输出一个 JSON 对象（严格 JSON），不允许任何前后缀文本、解释、Markdown、代码块围栏（\`\`\`）。\n\n输入：\n- command: ${command}\n- topic: ${topic}\n\n输出 JSON schema（字段必须齐全、类型正确，不得为 null）：\n{\n  \"type\": \"summary\",\n  \"version\": 1,\n  \"moderatorClosing\": string,\n  \"knowledgeNetwork\": {\n    \"leap\": [ { \"title\": string, \"desc\": string }, { \"title\": string, \"desc\": string } ],\n    \"pillars\": Array<{ \"label\": string, \"desc\": string }>,\n    \"risks\": Array<{ \"title\": string, \"desc\": string }>\n  },\n  \"ultimateConclusion\": string,\n  \"actions\": Array<{ \"id\": \"restart\", \"label\": \"重新推演\" }>\n}\n\n约束：\n- leap 必须恰好 2 项。\n- pillars 至少 3 项。\n- risks 至少 2 项。\n- actions 固定为 restart 一项。`
 }
 
 async function run() {
@@ -120,10 +120,10 @@ async function run() {
       try {
         if (step.name === 'invitation') {
           const parsed = parseIntroduction(text)
-          parsedOk = !!(parsed && parsed.topic && parsed.guests && parsed.guests.length)
+          parsedOk = !!(parsed && parsed.topic && parsed.guests && parsed.guests.length === 3 && parsed.moderatorParagraphs && parsed.moderatorParagraphs.length >= 2)
         } else if (step.name === 'round1' || step.name === 'round2') {
           const parsed = parseChat(text)
-          parsedOk = !!(parsed && parsed.roundTitle && parsed.speeches && parsed.speeches.length)
+          parsedOk = !!(parsed && parsed.roundTitle && parsed.moderatorAsk && parsed.speeches && parsed.speeches.length >= 3 && parsed.synthesis && parsed.synthesis.framework)
         } else if (step.name === 'summary') {
           const parsed = parseSummary(text)
           parsedOk = !!(
@@ -131,7 +131,12 @@ async function run() {
             parsed.moderatorClosing &&
             parsed.knowledgeNetwork &&
             parsed.knowledgeNetwork.leap &&
-            parsed.knowledgeNetwork.leap.length
+            parsed.knowledgeNetwork.leap.length === 2 &&
+            parsed.knowledgeNetwork.pillars &&
+            parsed.knowledgeNetwork.pillars.length >= 3 &&
+            parsed.knowledgeNetwork.risks &&
+            parsed.knowledgeNetwork.risks.length >= 2 &&
+            parsed.ultimateConclusion
           )
         }
       } catch (e) {

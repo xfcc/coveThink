@@ -1,6 +1,6 @@
 /**
- * 圆桌讨论 · 解析 LLM 返回的 Markdown
- * 结构以 examples/[TYPE] 邀请嘉宾.md、圆桌讨论.md、话题总结.md 为准
+ * 圆桌讨论 · 解析 LLM 返回的 JSON（严格 JSON，纯对象）
+ * system_instruction 已强制要求仅输出一个 JSON 对象
  */
 
 const THEMES = ['purple', 'green', 'blue']
@@ -13,42 +13,56 @@ function mbtiToClass(mbti) {
   return 'blue'
 }
 
+function asString(v) {
+  if (v == null) return ''
+  return typeof v === 'string' ? v : String(v)
+}
+
+function asArray(v) {
+  return Array.isArray(v) ? v : []
+}
+
+function assert(cond, msg) {
+  if (!cond) throw new Error(msg)
+}
+
+function parseJsonObject(raw) {
+  const text = (raw || '').trim()
+  try {
+    return JSON.parse(text)
+  } catch (e) {
+    throw new Error('JSON 解析失败：请确保 LLM 仅返回纯 JSON（无代码块/无前后缀）')
+  }
+}
+
 /**
  * 解析 [TYPE] 邀请嘉宾
  * @param {string} raw
  * @returns {{ topic: string, moderatorParagraphs: string[], guests: Array<{name,role,mbti,mbtiClass,stance}>, actionLabel: string }}
  */
 function parseIntroduction(raw) {
-  const text = (raw || '').trim()
-  const topicMatch = text.match(/#\s*\[TOPIC\]\s*(.+?)(?=\n|$)/)
-  const topic = (topicMatch && topicMatch[1].trim()) || ''
+  const obj = parseJsonObject(raw)
+  assert(obj && typeof obj === 'object', '邀请嘉宾：返回必须为 JSON 对象')
+  assert(obj.type === 'invitation', '邀请嘉宾：type 必须为 "invitation"')
 
-  const moderatorBlock = text.match(/##\s*\[MODERATOR\]\s*([\s\S]*?)(?=\n##\s*\[GUEST_ROSTER\]|$)/)
-  const moderatorText = (moderatorBlock && moderatorBlock[1].trim()) || ''
-  const moderatorParagraphs = moderatorText ? moderatorText.split(/\n\n+/).map(p => p.trim()).filter(Boolean) : []
-
-  const guestRoster = text.match(/##\s*\[GUEST_ROSTER\]\s*([\s\S]*?)(?=\n##\s*\[ACTION\]|$)/)
-  const rosterText = (guestRoster && guestRoster[1]) || ''
-  const guests = []
-  const guestBlocks = rosterText.split(/(?=###\s*\[GUEST\])/).filter(Boolean)
-  for (const block of guestBlocks) {
-    const nameMatch = block.match(/-?\s*name:\s*(.+?)(?=\n|$)/m)
-    const roleMatch = block.match(/-?\s*role:\s*(.+?)(?=\n|$)/m)
-    const mbtiMatch = block.match(/-?\s*mbti:\s*(.+?)(?=\n|$)/m)
-    const stanceMatch = block.match(/-?\s*stance:\s*([\s\S]+?)(?=\n###|\n##|$)/m)
-    if (nameMatch) {
-      guests.push({
-        name: (nameMatch[1] || '').trim(),
-        role: (roleMatch && roleMatch[1].trim()) || '',
-        mbti: (mbtiMatch && mbtiMatch[1].trim()) || '',
-        mbtiClass: mbtiToClass(mbtiMatch && mbtiMatch[1].trim()),
-        stance: (stanceMatch && stanceMatch[1].trim()) || ''
-      })
+  const topic = asString(obj.topic).trim()
+  const moderatorParagraphs = asArray(obj.moderatorParagraphs).map(p => asString(p).trim()).filter(Boolean)
+  const guestsRaw = asArray(obj.guests)
+  const guests = guestsRaw.map(g => {
+    const mbti = asString(g && g.mbti).trim()
+    return {
+      name: asString(g && g.name).trim(),
+      role: asString(g && g.role).trim(),
+      mbti,
+      mbtiClass: mbtiToClass(mbti),
+      stance: asString(g && g.stance).trim()
     }
-  }
+  }).filter(g => g.name)
+  const actionLabel = asString(obj.actionLabel).trim() || '进入第一轮圆桌讨论'
 
-  const actionMatch = text.match(/##\s*\[ACTION\]\s*(.+?)(?=\n|$)/)
-  const actionLabel = (actionMatch && actionMatch[1].trim()) || '进入第一轮圆桌讨论'
+  assert(topic, '邀请嘉宾：缺少 topic')
+  assert(moderatorParagraphs.length >= 1, '邀请嘉宾：moderatorParagraphs 至少 1 段')
+  assert(guests.length >= 1, '邀请嘉宾：guests 至少 1 位')
 
   return { topic, moderatorParagraphs, guests, actionLabel }
 }
@@ -59,66 +73,33 @@ function parseIntroduction(raw) {
  * @returns {{ roundNum: number, roundTitle: string, moderatorAsk: string, speeches: Array<{speaker,action,content,tldr,theme}>, synthesis: { coreConflict, framework, deepQuestion } }}
  */
 function parseChat(raw) {
-  const text = (raw || '').trim()
-  const roundNumMatch = text.match(/##\s*\[ROUND_NUM\]\s*(\d+)/)
-  const roundNum = roundNumMatch ? parseInt(roundNumMatch[1], 10) : 1
-  const roundMatch = text.match(/##\s*\[ROUND\]\s*(.+?)(?=\n|$)/)
-  const roundTitle = (roundMatch && roundMatch[1].trim()) || ''
+  const obj = parseJsonObject(raw)
+  assert(obj && typeof obj === 'object', '圆桌讨论：返回必须为 JSON 对象')
+  assert(obj.type === 'chat', '圆桌讨论：type 必须为 "chat"')
 
-  const moderatorAskBlock = text.match(/###\s*\[MODERATOR_ASK\]\s*([\s\S]*?)(?=\n###\s*\[SPEECH\]|$)/)
-  const moderatorAsk = (moderatorAskBlock && moderatorAskBlock[1].trim()) || ''
+  const roundNum = typeof obj.roundNum === 'number' ? obj.roundNum : parseInt(obj.roundNum, 10) || 1
+  const roundTitle = asString(obj.roundTitle).trim()
+  const moderatorAsk = asString(obj.moderatorAsk).trim()
 
-  const speechSection = text.match(/###\s*\[SPEECH\]([\s\S]*?)(?=\n###\s*\[SYNTHESIS\]|$)/)
-  const speechText = (speechSection && speechSection[1]) || ''
-  const speeches = []
-  const speechBlocks = speechText.split(/(?=###\s*\[SPEECH\])/).filter(b => /speaker\s*[:：]/.test(b))
-  speechBlocks.forEach((block, i) => {
-    // 兼容 "- key: value" 与 "key: value"，以及中英文冒号
-    const speakerMatch = block.match(/speaker\s*[:：]\s*([^\n]+?)(?=\n|$)/m)
-    const actionMatch = block.match(/action\s*[:：]\s*([^\n]+?)(?=\n|$)/m)
-    // content 从 "content:" 后到 "tldr:" 前，允许多行；支持中英文冒号
-    let content = ''
-    const contentLabel = block.match(/content\s*[:：]\s*/i)
-    const tldrLabel = block.match(/tldr\s*[:：]\s*/i)
-    if (contentLabel) {
-      const from = contentLabel.index + contentLabel[0].length
-      const to = tldrLabel ? tldrLabel.index : block.length
-      content = block.slice(from, to).replace(/^\s*[-*]\s*/, '').trim()
-    }
-    let tldr = ''
-    if (tldrLabel) {
-      const from = tldrLabel.index + tldrLabel[0].length
-      tldr = block.slice(from).split(/\n###/)[0].replace(/^\s*[-*]\s*/, '').trim()
-    }
-    if (speakerMatch) {
-      speeches.push({
-        speaker: (speakerMatch[1] || '').trim(),
-        action: (actionMatch && actionMatch[1].trim()) || '',
-        content,
-        tldr,
-        theme: THEMES[i % THEMES.length]
-      })
-    }
-  })
+  const speechesRaw = asArray(obj.speeches)
+  const speeches = speechesRaw.map((s, i) => ({
+    speaker: asString(s && s.speaker).trim(),
+    action: asString(s && s.action).trim(),
+    content: asString(s && s.content).trim(),
+    tldr: asString(s && s.tldr).trim(),
+    theme: THEMES[i % THEMES.length]
+  })).filter(s => s.speaker)
 
-  const synthesisBlock = text.match(/###\s*\[SYNTHESIS\]([\s\S]*?)(?=\n###\s*\[ACTIONS\]|$)/)
-  const synText = (synthesisBlock && synthesisBlock[1]) || ''
-  const coreConflictMatch = synText.match(/-?\s*core_conflict:\s*([\s\S]+?)(?=\n-\s*framework:|\n-?\s*deep_question:|\n###|$)/m)
-  const deepQuestionMatch = synText.match(/-?\s*deep_question:\s*([\s\S]+?)(?=\n###|$)/m)
-  let framework = ''
-  const frameworkStart = synText.indexOf('- framework:')
-  const frameworkEnd = synText.indexOf('- deep_question:')
-  if (frameworkStart !== -1) {
-    let f = frameworkEnd !== -1 ? synText.slice(frameworkStart, frameworkEnd) : synText.slice(frameworkStart)
-    f = f.replace(/^-\s*framework:\s*\n?/, '').trim()
-    f = f.replace(/^[`\s]*text[`\s]*\n?/, '').replace(/\n?[`\s]*$/, '').trim()
-    framework = f
-  }
+  const syn = obj.synthesis || {}
   const synthesis = {
-    coreConflict: (coreConflictMatch && coreConflictMatch[1].trim()) || '',
-    framework,
-    deepQuestion: (deepQuestionMatch && deepQuestionMatch[1].trim()) || ''
+    coreConflict: asString(syn.coreConflict).trim(),
+    framework: asString(syn.framework).trim(),
+    deepQuestion: asString(syn.deepQuestion).trim()
   }
+
+  assert(roundTitle, '圆桌讨论：缺少 roundTitle')
+  assert(moderatorAsk, '圆桌讨论：缺少 moderatorAsk')
+  assert(speeches.length >= 1, '圆桌讨论：speeches 至少 1 条')
 
   return { roundNum, roundTitle, moderatorAsk, speeches, synthesis }
 }
@@ -129,44 +110,25 @@ function parseChat(raw) {
  * @returns {{ moderatorClosing: string, knowledgeNetwork: { leap, pillars, risks }, ultimateConclusion: string }}
  */
 function parseSummary(raw) {
-  const text = (raw || '').trim()
-  const closingBlock = text.match(/###\s*\[MODERATOR_CLOSING\]\s*([\s\S]*?)(?=\n###\s*\[KNOWLEDGE_NETWORK\]|$)/)
-  const moderatorClosing = (closingBlock && closingBlock[1].trim()) || ''
+  const obj = parseJsonObject(raw)
+  assert(obj && typeof obj === 'object', '话题总结：返回必须为 JSON 对象')
+  assert(obj.type === 'summary', '话题总结：type 必须为 "summary"')
 
-  const knBlock = text.match(/###\s*\[KNOWLEDGE_NETWORK\]\s*([\s\S]*?)(?=\n###\s*\[ULTIMATE_CONCLUSION\]|$)/)
-  const knText = (knBlock && knBlock[1]) || ''
-  const leap = []
-  const pillars = []
-  const risks = []
-  const sections = knText.split(/(?=####\s+)/).filter(Boolean)
-  for (const section of sections) {
-    const listText = section.replace(/####\s+.+?\n?/, '')
-    const items = []
-    // 允许 "- [标签] 描述" 或 "* **[标签]** 描述" 这类写法
-    const lines = listText.split(/\n/).filter(l => /^\s*[-*]\s*(?:\*\*)?\[.+\]/.test(l))
-    for (const line of lines) {
-      const m = line.match(/^\s*[-*]\s*(?:\*\*)?\[([^\]]+)\](?:\*\*)?\s*(.*)$/)
-      if (m) items.push({ label: m[1].trim(), desc: (m[2] || '').trim() })
-    }
-    if (items.length === 0) continue
-    if (leap.length === 0 && items.length === 2) {
-      leap.push({ title: items[0].label, desc: items[0].desc }, { title: items[1].label, desc: items[1].desc })
-    } else if (pillars.length === 0 && items.length >= 3) {
-      items.forEach(it => pillars.push({ label: it.label, value: it.label, desc: it.desc }))
-    } else if (risks.length === 0 && items.length >= 1) {
-      items.forEach(it => risks.push({ title: it.label, desc: it.desc }))
-    }
-  }
+  const moderatorClosing = asString(obj.moderatorClosing).trim()
+  const kn = obj.knowledgeNetwork || {}
+  const leapRaw = asArray(kn.leap)
+  const pillarsRaw = asArray(kn.pillars)
+  const risksRaw = asArray(kn.risks)
+  const leap = leapRaw.map(it => ({ title: asString(it && it.title).trim(), desc: asString(it && it.desc).trim() })).filter(it => it.title)
+  const pillars = pillarsRaw.map(it => ({ label: asString(it && it.label).trim(), value: asString((it && it.value) || (it && it.label)).trim(), desc: asString(it && it.desc).trim() })).filter(it => it.label)
+  const risks = risksRaw.map(it => ({ title: asString(it && it.title).trim(), desc: asString(it && it.desc).trim() })).filter(it => it.title)
+  const ultimateConclusion = asString(obj.ultimateConclusion).trim()
 
-  const conclusionBlock = text.match(/###\s*\[ULTIMATE_CONCLUSION\]\s*([\s\S]*?)(?=\n###\s*\[ACTIONS\]|$)/)
-  let ultimateConclusion = (conclusionBlock && conclusionBlock[1].trim()) || ''
-  ultimateConclusion = ultimateConclusion.replace(/\*\*([^*]+)\*\*/g, '$1')
+  assert(moderatorClosing, '话题总结：缺少 moderatorClosing')
+  assert(leap.length >= 1, '话题总结：knowledgeNetwork.leap 至少 1 项')
+  assert(ultimateConclusion, '话题总结：缺少 ultimateConclusion')
 
-  return {
-    moderatorClosing,
-    knowledgeNetwork: { leap, pillars, risks },
-    ultimateConclusion
-  }
+  return { moderatorClosing, knowledgeNetwork: { leap, pillars, risks }, ultimateConclusion }
 }
 
 /**
@@ -175,16 +137,11 @@ function parseSummary(raw) {
  * @returns {{ type: 'invitation'|'chat'|'summary', data: object }}
  */
 function parseByType(raw) {
-  const t = (raw || '').trim().slice(0, 80)
-  if (/\[TYPE\]\s*邀请嘉宾/.test(t)) {
-    return { type: 'invitation', data: parseIntroduction(raw) }
-  }
-  if (/\[TYPE\]\s*圆桌讨论/.test(t)) {
-    return { type: 'chat', data: parseChat(raw) }
-  }
-  if (/\[TYPE\]\s*话题总结/.test(t)) {
-    return { type: 'summary', data: parseSummary(raw) }
-  }
+  const obj = parseJsonObject(raw)
+  const type = obj && obj.type
+  if (type === 'invitation') return { type: 'invitation', data: parseIntroduction(raw) }
+  if (type === 'chat') return { type: 'chat', data: parseChat(raw) }
+  if (type === 'summary') return { type: 'summary', data: parseSummary(raw) }
   return { type: null, data: null }
 }
 

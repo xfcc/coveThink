@@ -26,9 +26,7 @@ function buildSummaryPrompt(command, topic, context = {}) {
       return block
     }).join('\n')}\n\n`
   }
-  return `${prefix}指令：${command}
-议题：${topic}
-请严格按照 [TYPE] 话题总结 的 Markdown 结构输出总结内容（包含 [CONCLUSION]、[MODERATOR_CLOSING]、[KNOWLEDGE_NETWORK]、[ULTIMATE_CONCLUSION] 与 [ACTIONS]），针对上述本场嘉宾与讨论脉络进行结构化收束。`
+  return `${prefix}你将收到“止”指令与上下文，请输出圆桌讨论的结构化收束总结。\n\n要求：只输出一个 JSON 对象（严格 JSON），不允许任何前后缀文本、解释、Markdown、代码块围栏（\`\`\`）。\n\n输入：\n- command: ${command}\n- topic: ${topic}\n\n输出 JSON schema（字段必须齐全、类型正确，不得为 null）：\n{\n  \"type\": \"summary\",\n  \"version\": 1,\n  \"moderatorClosing\": string,\n  \"knowledgeNetwork\": {\n    \"leap\": [ { \"title\": string, \"desc\": string }, { \"title\": string, \"desc\": string } ],\n    \"pillars\": Array<{ \"label\": string, \"desc\": string }>,\n    \"risks\": Array<{ \"title\": string, \"desc\": string }>\n  },\n  \"ultimateConclusion\": string,\n  \"actions\": Array<{ \"id\": \"restart\", \"label\": \"重新推演\" }>\n}\n\n约束：\n- leap 必须恰好 2 项。\n- pillars 至少 3 项。\n- risks 至少 2 项。\n- actions 固定为 restart 一项。`
 }
 
 /** 话题总结预估字数（用于进度条分母，完成前最多显示 99%） */
@@ -145,9 +143,9 @@ Page({
       })
   },
 
-  /** 供外部注入解析结果：传入 LLM 返回的 markdown 文本 */
-  applyMarkdown(markdownText) {
-    const parsed = parseSummary(markdownText)
+  /** 供外部注入解析结果：传入 LLM 返回的 JSON 文本 */
+  applyJson(jsonText) {
+    const parsed = parseSummary(jsonText)
     const app = getApp()
     const topic = app.globalData.roundtableTopic || this.data.topic
     this.setData({
